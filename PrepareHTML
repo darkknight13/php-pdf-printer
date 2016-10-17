@@ -1,0 +1,175 @@
+
+class PrepareHTML{
+    private $doc;
+    private $html;
+    private $xpath;
+    
+    public function __construct($html) {
+        $this->html = $html;
+        $this->doc = new DOMDocument();
+        @$this->doc->loadHTML($html);
+        $this->xpath = new DOMXpath($this->doc);
+    }
+    
+    static public function initiate($html){
+        return new self($html);
+    }
+    
+    protected function doQuery($xpathQuery){
+        return @$this->xpath->query($xpathQuery);
+    }
+    
+    protected function createElement($type, $value, $attributes = array()){
+        $element = $this->doc->createElement($type, $value);
+        foreach ($attributes as $key => $value) {
+            $element->setAttribute($key, $value);
+        }
+        return $element;
+    }
+    
+    protected function itemNodeValue($item){
+        return isset($item->nodeValue) ? $item->nodeValue : '';
+    }
+    
+    protected function itemValueAttribute($item){
+        return $item->getAttribute('value');
+    }
+    
+    protected function itemOptionValue($item){
+        $optionText = '';
+        $options = $item->getElementsByTagName('option');
+        foreach ($options as $option) {
+            if ($option->hasAttribute('selected')) {
+                $value = $option->getAttribute('value');
+                $optionText = $option->textContent;
+            }
+        }
+        return $optionText;
+    }
+    
+    protected function replaceProcess($xpathQuery, $valueFunction, $id= array(),$class=array(),$options = array()){
+        $replaceWith = isset($options['replaceWith']) ? $options['replaceWith'] : 'div';
+        $replaceClass = isset($options['replaceClass']) ? $options['replaceClass'] : 'replaced-object';
+        $items = $this->doQuery($xpathQuery);
+        for ($i=0; $i < $items->length; $i++) {
+            $item = $items->item($i);
+            $value = $this->$valueFunction($item);
+            $element = $this->createElement($replaceWith, $value,array('class'=>$replaceClass));
+            $this->replaceDomObject($item->parentNode,$element,$item);
+        }
+    }
+    
+    protected function removeElementViaQuery($xpathQuery){
+        foreach ($this->xpath->query($xpathQuery) as $element) {
+            $element->parentNode->removeChild($element);
+        }
+    }
+    
+    protected function replaceDomObject($parentNode,$appendElement,$removeElement){
+        $parentNode->appendChild($appendElement);
+        $parentNode->removeChild($removeElement);
+    }
+    
+    public function replace($element_type, $id= array(),$class=array(), $options = array()){
+        switch ($element_type){
+            case 'select' :
+                return $this->replaceSelect($id, $class, $options);
+                break;
+            case 'textarea' :
+                return $this->replaceTextarea($id, $class, $options);
+                break;
+            case 'textfield' :
+                return $this->replaceInput($id, $class, $options);
+                break;
+        }
+    }
+    
+    public function removeBySelector($selectorType, $selectors= array()){
+        switch ($selectorType) {
+            case 'class' :
+                foreach ($selectors as $selectorItem) {
+                    foreach ($selectorItem as $elementType => $selector) {
+                        $this->removeByClass($elementType, $selector);
+                    }
+                }
+                break;
+            case 'id' :
+                foreach ($selectors as $selectorItem) {
+                    foreach ($selectorItem as $elementType => $selector) {
+                        $this->removeById($elementType, $selector);
+                    }
+                }
+                break;
+        }
+        return $this;
+    }
+    
+    public function removeAttributes($attributes, $selectors= array(), $options = array()){
+        switch ($attributes) {
+            case 'class' :
+                foreach ($selectors as $selectorItem) {
+                    foreach ($selectorItem as $elementType => $selector) {
+                        $this->removeClass($elementType, $selector, $options);
+                    }
+                }
+                return $this;
+                break;
+        }
+    }
+    
+    public function removeByClass($elementType, $selector){
+        $xpath_query = '//'.$elementType.'[contains(@class, "' . $selector . '")]';
+        return $this->removeElementViaQuery($xpath_query);
+    }
+    
+    public function removeById($elementType, $selector){
+        $xpath_query = '//'.$elementType.'[@id="'.$selector.'"]';
+        return $this->removeElementViaQuery($xpath_query);
+    }
+    
+    public function replaceSelect($id= array(),$class=array(),$options = array()){
+        $xpathQuery = '//select';
+        $options['replaceClass'] = isset($options['replaceClass']) ? $options['replaceClass'] : 'replaced-select';
+        $this->replaceProcess($xpathQuery,'itemOptionValue',$id,$class,$options);
+        return $this;
+    }
+    
+    public function replaceTextarea($id= array(),$class=array(),$options = array()){
+        $xpathQuery = '//textarea';
+        $options['replaceClass'] = isset($options['replaceClass']) ? $options['replaceClass'] : 'replaced-textarea';
+        $this->replaceProcess($xpathQuery,'itemNodeValue',$id,$class,$options);
+        return $this;
+    }
+    
+    public function replaceInput($id= array(),$class=array(),$options = array()){
+        $xpathQuery = '//input[@type="text"]';
+        $options['replaceClass'] = isset($options['replaceClass']) ? $options['replaceClass'] : 'replaced-textfield';
+        $this->replaceProcess($xpathQuery,'itemValueAttribute',$id,$class,$options);
+        return $this;
+    }
+    
+    public function removeClass($element_type, $selector, $options = array()){
+        $replaceWith = isset($options['replaceWith']) ? $options['replaceWith'] : 'div';
+        $replaceClass = isset($options['replaceClass']) ? $options['replaceClass'] : 'replace-class';
+        $xpath_query = '//'.$element_type.'[contains(@class, "' . $selector . '")]';
+        $items = @$this->xpath->query($xpath_query);
+        for ($i=0; $i < $items->length; $i++) {
+            $item = $items->item($i);
+            $existing_class = $item->getAttribute('class');
+            $existing_class = str_replace($selector,'',$existing_class);
+            $item->setAttribute('class', $existing_class.' '.$replaceClass);
+        }
+        return $this;
+    }
+    
+    public function updateHTML(){
+        $this->html = $this->doc->saveHTML();
+        @$this->doc->loadHTML($html);
+        $this->xpath = new DOMXpath($this->doc);
+        return $this;
+    }
+    
+    public function save(){
+        return $this->doc->saveHTML();
+    }
+}
